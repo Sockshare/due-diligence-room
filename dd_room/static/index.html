@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Due-Diligence Room — Multi-Agent SEC EDGAR Research Workstation</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Left Navigation Rail -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">DD</div>
+        <div>
+          <div class="brand-title">Due-Diligence Room</div>
+          <div class="brand-sub">SEC EDGAR · 5-Agent Blackboard</div>
+        </div>
+      </div>
+
+      <nav class="nav-list" aria-label="Primary Navigation">
+        <button class="nav-btn active" data-view="memo" id="nav-memo">
+          <span class="nav-btn-left"><span class="nav-icon">📄</span><span>Memo</span></span>
+          <span class="nav-badge" id="badge-memo">—</span>
+        </button>
+        <button class="nav-btn" data-view="live" id="nav-live">
+          <span class="nav-btn-left"><span class="nav-icon">⚡</span><span>Live Room</span></span>
+          <span class="nav-badge" id="badge-live">5</span>
+        </button>
+        <button class="nav-btn" data-view="financials" id="nav-financials">
+          <span class="nav-btn-left"><span class="nav-icon">📊</span><span>Financials</span></span>
+          <span class="nav-badge" id="badge-financials">—</span>
+        </button>
+        <button class="nav-btn" data-view="forensics" id="nav-forensics">
+          <span class="nav-btn-left"><span class="nav-icon">🔬</span><span>Forensics</span></span>
+          <span class="nav-badge" id="badge-forensics">—</span>
+        </button>
+        <button class="nav-btn" data-view="legal" id="nav-legal">
+          <span class="nav-btn-left"><span class="nav-icon">⚖️</span><span>Risk &amp; Legal</span></span>
+          <span class="nav-badge" id="badge-legal">—</span>
+        </button>
+        <button class="nav-btn" data-view="sources" id="nav-sources">
+          <span class="nav-btn-left"><span class="nav-icon">🔗</span><span>Sources</span></span>
+          <span class="nav-badge" id="badge-sources">0</span>
+        </button>
+        <button class="nav-btn" data-view="history" id="nav-history">
+          <span class="nav-btn-left"><span class="nav-icon">🗂️</span><span>History</span></span>
+          <span class="nav-badge" id="badge-history">0</span>
+        </button>
+        <button class="nav-btn" data-view="settings" id="nav-settings">
+          <span class="nav-btn-left"><span class="nav-icon">⚙️</span><span>Settings</span></span>
+          <span class="nav-badge" id="badge-settings">offline</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <a href="/methodology" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">📐 Methodology &amp; Citations</a>
+        <div class="sidebar-disclaimer">
+          <strong>Not financial or legal advice.</strong> Automated research aid over public SEC EDGAR filings. Verify every number via its linked filing before relying on it.
+        </div>
+      </div>
+    </aside>
+
+    <!-- Top Run Bar -->
+    <header class="topbar">
+      <div class="run-controls">
+        <div class="search-wrap">
+          <input type="text" id="ticker-input" class="ticker-input" placeholder="Ticker or CIK (e.g. AAPL)" value="AAPL" autocomplete="off" aria-label="Ticker symbol or CIK">
+          <div id="search-dropdown" class="search-dropdown" style="display:none;"></div>
+        </div>
+
+        <div class="quick-tickers" aria-label="Sample tickers">
+          <button type="button" class="chip-btn" data-ticker="AAPL">AAPL</button>
+          <button type="button" class="chip-btn" data-ticker="SCKT">SCKT</button>
+          <button type="button" class="chip-btn" data-ticker="NVDA">NVDA</button>
+          <button type="button" class="chip-btn" data-ticker="MSFT">MSFT</button>
+        </div>
+
+        <select id="depth-select" class="select-input" aria-label="Analysis depth">
+          <option value="quick">Quick (3y · latest 10-K)</option>
+          <option value="standard" selected>Standard (5y · 10-K diff · Form 4 · peers)</option>
+          <option value="deep">Deep (10y · 40 Form 4s · full peers)</option>
+        </select>
+
+        <select id="provider-select" class="select-input" aria-label="LLM provider">
+          <option value="offline">Offline (deterministic · 0 keys)</option>
+          <option value="gemini">Gemini</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="openai">OpenAI</option>
+          <option value="ollama">Ollama (local)</option>
+        </select>
+
+        <label class="gate-toggle" title="Pause before the Editor agent finalises the memo so a human can review the blackboard">
+          <input type="checkbox" id="gate-checkbox">
+          <span>Gate before Editor</span>
+        </label>
+
+        <span id="budget-pill" class="budget-pill" title="Estimated LLM token budget before starting run">0 tokens · deterministic</span>
+
+        <button type="button" id="run-btn" class="btn btn-primary">▶ Run Due Diligence</button>
+      </div>
+
+      <div class="topbar-right">
+        <div id="active-run-pill" class="active-run-pill">
+          <span id="run-status-dot" class="status-dot"></span>
+          <span id="run-status-text">Ready</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Views -->
+    <main class="main-area">
+      <div id="global-alert" class="banner banner-error" style="display:none;"></div>
+
+      <div id="approval-banner" class="banner banner-approval" style="display:none;">
+        <div>
+          <strong>⏸ Human Approval Gate Pending — Editor Ready to Finalise</strong>
+          <div id="approval-details" class="card-subtitle" style="margin-top:4px;"></div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="text" id="approval-note" class="text-input" placeholder="Optional reviewer note..." style="width:200px;">
+          <button type="button" id="approve-btn" class="btn btn-success btn-sm">✓ Approve &amp; Finalise</button>
+          <button type="button" id="reject-btn" class="btn btn-danger btn-sm">✗ Reject Run</button>
+        </div>
+      </div>
+
+      <!-- 1. MEMO VIEW -->
+      <section id="view-memo" class="view-section active">
+        <div class="card">
+          <div class="card-header" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">
+            <div>
+              <h2 class="card-title" id="memo-header-title">Investment Committee Memo</h2>
+              <div class="card-subtitle" id="memo-header-sub">Every financial figure links directly to its SEC EDGAR filing or methodology formula.</div>
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+              <span id="audit-badge" class="badge badge-green">0 unsourced figures</span>
+              <a id="dl-md-btn" href="#" class="btn btn-secondary btn-sm">⬇ Markdown (.md)</a>
+              <a id="dl-pdf-btn" href="#" class="btn btn-secondary btn-sm">⬇ PDF (.pdf)</a>
+              <a id="open-standalone-btn" href="#" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">🖨 Print / Standalone View</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="memo-layout">
+          <aside class="memo-toc-card">
+            <div class="card-title" style="font-size:13px;">Sections &amp; Confidence</div>
+            <div id="memo-toc-list" class="memo-toc-list"></div>
+          </aside>
+          <article id="memo-container" class="memo memo-paper">
+            <div class="empty-state">Select a ticker and click <strong>Run Due Diligence</strong> (or pick a run from History) to inspect the sourced investment memo.</div>
+          </article>
+        </div>
+      </section>
+
+      <!-- 2. LIVE ROOM VIEW -->
+      <section id="view-live" class="view-section">
+        <div class="kpi-grid" id="live-kpis">
+          <div class="kpi-card">
+            <div class="kpi-label">Active Company</div>
+            <div class="kpi-value" id="live-kpi-ticker">—</div>
+            <div class="kpi-sub" id="live-kpi-name">No run loaded</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Sections Completed</div>
+            <div class="kpi-value" id="live-kpi-sections">0 / 15</div>
+            <div class="kpi-sub" id="live-kpi-depth">Standard depth</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Registered Sources</div>
+            <div class="kpi-value" id="live-kpi-sources">0</div>
+            <div class="kpi-sub">Deduplicated XBRL &amp; filings</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Claims vs Counters</div>
+            <div class="kpi-value" id="live-kpi-claims">0 / 0</div>
+            <div class="kpi-sub">Bull/Bear claims &amp; Skeptic replies</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Disagreements &amp; Gaps</div>
+            <div class="kpi-value" id="live-kpi-gaps">0 / 0</div>
+            <div class="kpi-sub">Unresolved conflicts &amp; missing data</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Source Audit</div>
+            <div class="kpi-value" id="live-kpi-audit">Clean</div>
+            <div class="kpi-sub" id="live-kpi-audit-sub">0 unsourced figures</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Five Specialist Agents — Live Step Stream (SSE)</h2>
+              <div class="card-subtitle">Analyst → Forensic Accountant → Legal → Skeptic → (Approval Gate) → Editor</div>
+            </div>
+            <span id="sse-indicator" class="badge badge-grey">SSE Idle</span>
+          </div>
+          <div id="agents-grid" class="agents-grid"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Shared Blackboard — 15 Typed Sections</h2>
+              <div class="card-subtitle">Click any section card to jump to it in the Memo or inspect its confidence notes.</div>
+            </div>
+          </div>
+          <div id="blackboard-grid" class="bb-grid"></div>
+        </div>
+      </section>
+
+      <!-- 3. FINANCIALS VIEW -->
+      <section id="view-financials" class="view-section">
+        <div id="valuation-kpis" class="kpi-grid"></div>
+
+        <div class="charts-grid">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Revenue, Operating Income, Net Income &amp; FCF</h3>
+                <div class="card-subtitle">Annual XBRL series (latest-filed values win on restatement)</div>
+              </div>
+            </div>
+            <div class="chart-box"><canvas id="chart-rev-fcf"></canvas></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Profitability, FCF Margin &amp; ROIC</h3>
+                <div class="card-subtitle">Gross, Operating, Net, FCF margins &amp; approximate ROIC (%)</div>
+              </div>
+            </div>
+            <div class="chart-box"><canvas id="chart-margins"></canvas></div>
+          </div>
+
+          <div class="card" id="price-chart-card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">5-Year Share Price History</h3>
+                <div class="card-subtitle" id="price-chart-sub">Yahoo Finance weekly closes (optional feed)</div>
+              </div>
+            </div>
+            <div class="chart-box"><canvas id="chart-prices"></canvas></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Multi-Year Financial Model (XBRL Companyfacts)</h3>
+              <div class="card-subtitle" id="fin-table-sub">All figures traced to annual 10-K/20-F XBRL tags</div>
+            </div>
+          </div>
+          <div id="fin-table-wrap" class="data-table-wrap"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Same-SIC Peer Comparison (XBRL Frames)</h3>
+              <div class="card-subtitle" id="peers-table-sub">Discovered via EDGAR EFTS + XBRL calendar-year frames</div>
+            </div>
+          </div>
+          <div id="peers-table-wrap" class="data-table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- 4. FORENSICS VIEW -->
+      <section id="view-forensics" class="view-section">
+        <div class="charts-grid">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Beneish M-Score Component Indices</h3>
+                <div class="card-subtitle">DSRI, GMI, AQI, SGI, DEPI, SGAI, LVGI, TATA vs 1.0 neutral baseline</div>
+              </div>
+            </div>
+            <div class="chart-box"><canvas id="chart-beneish"></canvas></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Auditor Changes, Restatements &amp; Going Concern</h3>
+                <div class="card-subtitle">8-K Item 4.01 / 4.02 events, 10-K/A amendments &amp; going-concern scan</div>
+              </div>
+            </div>
+            <div id="audit-events-box"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Forensic Accounting &amp; Earnings-Quality Screens</h3>
+              <div class="card-subtitle">Formulas, academic citations, thresholds, and exact XBRL input audit trail</div>
+            </div>
+          </div>
+          <div id="forensic-cards-grid" class="forensic-grid"></div>
+        </div>
+      </section>
+
+      <!-- 5. RISK & LEGAL VIEW -->
+      <section id="view-legal" class="view-section">
+        <div class="charts-grid">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Item 1A Risk Factor Theme Clusters</h3>
+                <div class="card-subtitle" id="risk-cluster-sub">Sentence distribution across risk themes in latest 10-K</div>
+              </div>
+            </div>
+            <div class="chart-box"><canvas id="chart-risks"></canvas></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Year-over-Year Item 1A Risk Diff &amp; Item 3 Legal Proceedings</h3>
+                <div class="card-subtitle">Added/removed sentences vs prior 10-K and material litigation disclosures</div>
+              </div>
+            </div>
+            <div id="risk-diff-box"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Skeptic's Bear Case: Bullish Claims vs Counters &amp; Unresolved Disagreements</h3>
+              <div class="card-subtitle">Every optimistic claim on the blackboard must be answered with specific counter-evidence</div>
+            </div>
+          </div>
+          <div id="skeptic-counters-wrap" class="data-table-wrap"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">24-Month Form 8-K Material Event Timeline</h3>
+              <div class="card-subtitle">Material governance, M&amp;A, debt, impairment, and officer-change events flagged (⚠)</div>
+            </div>
+          </div>
+          <div id="eightk-table-wrap" class="data-table-wrap"></div>
+        </div>
+
+        <div class="charts-grid">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Insider Form 4 Activity &amp; 13F Holders</h3>
+                <div class="card-subtitle">Parsed Form 4 XML transactions (code P buys vs code S sales)</div>
+              </div>
+            </div>
+            <div id="insiders-wrap" class="data-table-wrap"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Executive Compensation (DEF 14A Proxy)</h3>
+                <div class="card-subtitle">Summary Compensation Table extracted from latest DEF 14A</div>
+              </div>
+            </div>
+            <div id="comp-wrap" class="data-table-wrap"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. SOURCES VIEW -->
+      <section id="view-sources" class="view-section">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Complete Source &amp; Citation Registry</h2>
+              <div class="card-subtitle">Every footnote `[S1..Sn]` in the memo maps to a verifiable SEC filing, XBRL tag, or derived formula.</div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input type="text" id="source-filter-input" class="text-input" placeholder="Filter by concept, accession, label..." style="width:240px;">
+              <select id="source-kind-select" class="select-input">
+                <option value="">All kinds</option>
+                <option value="xbrl">XBRL facts</option>
+                <option value="filing">SEC filings</option>
+                <option value="derived">Derived formulas</option>
+                <option value="market">Market prices</option>
+                <option value="efts">EFTS searches</option>
+                <option value="index">EDGAR indices</option>
+              </select>
+            </div>
+          </div>
+          <div id="sources-table-wrap" class="data-table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- 7. HISTORY VIEW -->
+      <section id="view-history" class="view-section">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Saved Due-Diligence Runs (SQLite)</h2>
+              <div class="card-subtitle">Click Open on any historical run to inspect its memo, blackboard, forensic screens, and sources offline.</div>
+            </div>
+            <button type="button" id="refresh-history-btn" class="btn btn-secondary btn-sm">↻ Refresh</button>
+          </div>
+          <div id="history-table-wrap" class="data-table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- 8. SETTINGS VIEW -->
+      <section id="view-settings" class="view-section">
+        <div class="card" style="max-width:760px;">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Workstation Settings &amp; Environment</h2>
+              <div class="card-subtitle">Local-first configuration. API keys are read only from environment variables or a gitignored <code>.env</code> file.</div>
+            </div>
+          </div>
+
+          <form id="settings-form" style="display:flex; flex-direction:column; gap:14px;">
+            <div>
+              <label style="display:block; font-weight:600; margin-bottom:4px;">Default LLM Provider</label>
+              <select id="settings-provider" class="select-input" style="width:100%; max-width:360px;">
+                <option value="offline">offline — Deterministic templates (0 API keys)</option>
+                <option value="gemini">gemini — Google Gemini (GEMINI_API_KEY)</option>
+                <option value="anthropic">anthropic — Anthropic Claude (ANTHROPIC_API_KEY)</option>
+                <option value="openai">openai — OpenAI Chat Completions (OPENAI_API_KEY)</option>
+                <option value="ollama">ollama — Local Ollama HTTP server (OLLAMA_HOST)</option>
+              </select>
+            </div>
+
+            <div>
+              <label style="display:block; font-weight:600; margin-bottom:4px;">Model Override (optional)</label>
+              <input type="text" id="settings-model" class="text-input" placeholder="e.g. gemini-2.0-flash, claude-3-5-haiku-latest, gpt-4o-mini" style="width:100%; max-width:360px;">
+            </div>
+
+            <div>
+              <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="settings-auto-approve">
+                <span><strong>Auto-approve Editor finalisation</strong> (when unchecked, runs pause at the human approval gate before the Editor writes the memo)</span>
+              </label>
+            </div>
+
+            <div style="display:flex; gap:10px; align-items:center;">
+              <button type="submit" class="btn btn-primary">Save Settings</button>
+              <span id="settings-saved-msg" style="color:var(--green); font-size:12.5px; display:none;">✓ Saved to local SQLite</span>
+            </div>
+          </form>
+
+          <hr style="border:none; border-top:1px solid var(--border); margin:20px 0;">
+
+          <h3 class="card-title" style="font-size:14px; margin-bottom:10px;">Environment &amp; Fair-Access Diagnostics</h3>
+          <div id="env-diagnostics" class="data-table-wrap"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Floating Citation Inspector -->
+  <div id="cite-inspector" class="cite-inspector"></div>
+
+  <script src="/static/vendor/chart.umd.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
